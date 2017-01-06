@@ -63,16 +63,16 @@ public final class Fixed {
         int yl = value._data;
 
         int xlo = xl & FRACTION_MASK;
-        int xhi = xl >>> FRACTIONAL_PLACES;
+        int xhi = xl >> FRACTIONAL_PLACES;
         int ylo = yl & FRACTION_MASK;
-        int yhi = yl >>> FRACTIONAL_PLACES;
+        int yhi = yl >> FRACTIONAL_PLACES;
 
         int lolo = xlo * ylo;
         int lohi = xlo * yhi;
         int hilo = xhi * ylo;
         int hihi = xhi * yhi;
 
-        int loResult = lolo >> FRACTIONAL_PLACES;
+        int loResult = lolo >>> FRACTIONAL_PLACES;
         int midResult1 = lohi;
         int midResult2 = hilo;
         int hiResult = hihi << FRACTIONAL_PLACES;
@@ -86,8 +86,8 @@ public final class Fixed {
 	
 	private static int leadingZeroes(int x) {
         int result = 0;
-        while ((x & 0xf0000000) == 0) { result += 4; x <<= 4; }
-        while ((x & 0x80000000) == 0) { result += 1; x <<= 1; }
+        while ((x & fourBitHighMask) == 0) { result += 4; x <<= 4; }
+        while ((x & oneBitHighMask) == 0) { result += 1; x <<= 1; }
         return result;
     }
 
@@ -230,7 +230,7 @@ public final class Fixed {
 	
 	public static Fixed fromString(String stringValue) {
 		String[] parts = null;
-		String[] delimiters = {".", ","};
+		String[] delimiters = {"\\.",","};
 
 		for (int i = 0; i < delimiters.length && (parts == null || parts.length == 1); i++) {
 			parts = stringValue.split(delimiters[i]);
@@ -251,7 +251,7 @@ public final class Fixed {
 			Fixed fLeft = Fixed.fromInt(left);
 			Fixed sign = fLeft.lessThan(Fixed.zero) ? Fixed.one.negate() : Fixed.one;
 
-			return fLeft.add(Fixed.fromInt(right).div(divider)).mul(sign);
+			return fLeft.add(Fixed.fromInt(right).div(divider).mul(sign));
 		}
 
 		return Fixed.fromInt(left);
