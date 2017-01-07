@@ -27,8 +27,55 @@ public final class Fixed {
 	public static final Fixed one = new Fixed(ONE);
 	public static final Fixed two = new Fixed(TWO);
 	public static final Fixed half = new Fixed(HALF);
-	
 	public static final Fixed precision = new Fixed(1);
+	
+	// String part lengths
+	//private static final int _leftLength = Integer.toString(maxValue.intValue()).length();
+	private static final int _rightLength;
+	static {
+		String[] parts = precision.bigDecimalValue().toString().split("\\.");
+		if (parts.length <= 1) {
+			_rightLength = 0;
+		} else {
+			int res = 1;
+			for (int i = 0; i < parts[1].length(); i++) {
+				if (parts[1].charAt(i) == '0') {
+					res++;
+					continue;
+				}
+				break;
+			}
+			_rightLength = res;
+		}
+	}
+	
+	private static Fixed[] _tenPowerTable = new Fixed[] {
+			Fixed.fromLong(1L),  // 10^0
+			Fixed.fromLong(10L),  // 10^1
+			Fixed.fromLong(100L),  // 10^2
+			Fixed.fromLong(1000L),  // 10^3
+			Fixed.fromLong(10000L),  // 10^4
+			Fixed.fromLong(100000L),  // 10^5
+			Fixed.fromLong(1000000L),  // 10^6
+			Fixed.fromLong(10000000L),  // 10^7
+			Fixed.fromLong(100000000L),  // 10^8
+			Fixed.fromLong(1000000000L),  // 10^9
+			Fixed.fromLong(10000000000L),  // 10^10
+			Fixed.fromLong(100000000000L),  // 10^11
+			Fixed.fromLong(1000000000000L),  // 10^12
+			Fixed.fromLong(10000000000000L),  // 10^13
+			Fixed.fromLong(100000000000000L),  // 10^14
+			Fixed.fromLong(1000000000000000L),  // 10^15
+			Fixed.fromLong(10000000000000000L),  // 10^16
+			Fixed.fromLong(100000000000000000L),  // 10^17
+			Fixed.fromLong(1000000000000000000L),  // 10^18
+	};
+	
+	public static final Fixed pi = Fixed.fromString("3.14159265358979323846264338327950288419716939937510");
+	public static final Fixed piTimesTwo = Fixed.fromString("6.28318530717958647692528676655900576839433879875020");
+	public static final Fixed piOverTwo = Fixed.fromString("1.57079632679489661923132169163975144209858469968755");
+	public static final Fixed piInv = Fixed.fromString("0.31830988618379067153776752674502872406891929148091");
+	public static final Fixed piOverTwoInv = Fixed.fromString("0.63661977236758134307553505349005744813783858296183");
 	
 	private Fixed(int data) {
 		_data = data;
@@ -160,7 +207,7 @@ public final class Fixed {
 		return _data < value._data;
 	}
 	
-	public boolean moreThan(Fixed value) {
+	public boolean greaterThan(Fixed value) {
 		return _data > value._data;
 	}
 	
@@ -168,7 +215,7 @@ public final class Fixed {
 		return _data <= value._data;
 	}
 	
-	public boolean moreThanOrEquals(Fixed value) {
+	public boolean greaterThanOrEquals(Fixed value) {
 		return _data >= value._data;
 	}
 	
@@ -311,27 +358,6 @@ public final class Fixed {
 		return new Fixed((int)(value * ONE));
 	}
 	
-	// String part lengths
-	private static final int _leftLength = Integer.toString(maxValue.intValue()).length();
-	private static final int _rightLength;
-	private static final int _maxInt = maxValue.intValue();
-	static {
-		String[] parts = precision.bigDecimalValue().toString().split("\\.");
-		if (parts.length <= 1) {
-			_rightLength = 0;
-		} else {
-			int res = 1;
-			for (int i = 0; i < parts[1].length(); i++) {
-				if (parts[1].charAt(i) == '0') {
-					res++;
-					continue;
-				}
-				break;
-			}
-			_rightLength = res;
-		}
-	}
-	
 	public static Fixed fromString(String stringValue) {
 		String[] parts = null;
 		String[] delimiters = {"\\.",","};
@@ -346,7 +372,7 @@ public final class Fixed {
 
 		int left = Integer.parseInt(parts[0]);
 
-		if (left > _maxInt) {
+		if (left > maxValue.intValue()) {
 			throw new NumberFormatException("Invalid input string: too large number");
 		}
 		
@@ -357,39 +383,26 @@ public final class Fixed {
 			}
 			
 			int right = Integer.parseInt(parts[1]);
-
 			Fixed divider = _tenPowerTable[parts[1].length()]; // 10 ^parts.Length
+			
+			// Decimal precision of fromString may decrease when DECIMAL_BITS == 16
+			while (divider.intValue() < 0) {
+				parts[1] = parts[1].substring(0, parts[1].length() - 1);
+				right = Integer.parseInt(parts[1]);
+				divider = _tenPowerTable[parts[1].length()];
+			}
 				
 			Fixed fLeft = Fixed.fromInt(left);
 			Fixed sign = fLeft.lessThan(Fixed.zero) ? Fixed.one.negate() : Fixed.one;
 
-			return fLeft.add(Fixed.fromInt(right).div(divider).mul(sign));
+			Fixed lr = Fixed.fromInt(right);
+			lr = lr.div(divider).mul(sign);
+			
+			return fLeft.add(lr);
 		}
 
 		return Fixed.fromInt(left);
 	}
-
-	private static Fixed[] _tenPowerTable = new Fixed[] {
-			Fixed.fromLong(1L),  // 10^0
-			Fixed.fromLong(10L),  // 10^1
-			Fixed.fromLong(100L),  // 10^2
-			Fixed.fromLong(1000L),  // 10^3
-			Fixed.fromLong(10000L),  // 10^4
-			Fixed.fromLong(100000L),  // 10^5
-			Fixed.fromLong(1000000L),  // 10^6
-			Fixed.fromLong(10000000L),  // 10^7
-			Fixed.fromLong(100000000L),  // 10^8
-			Fixed.fromLong(1000000000L),  // 10^9
-			Fixed.fromLong(10000000000L),  // 10^10
-			Fixed.fromLong(100000000000L),  // 10^11
-			Fixed.fromLong(1000000000000L),  // 10^12
-			Fixed.fromLong(10000000000000L),  // 10^13
-			Fixed.fromLong(100000000000000L),  // 10^14
-			Fixed.fromLong(1000000000000000L),  // 10^15
-			Fixed.fromLong(10000000000000000L),  // 10^16
-			Fixed.fromLong(100000000000000000L),  // 10^17
-			Fixed.fromLong(1000000000000000000L),  // 10^18
-	};
 	
 	public float floatValue() {
         return (float)_data / ONE;
