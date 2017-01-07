@@ -1,5 +1,7 @@
 package com.mcdevon.fixed;
 
+import java.math.BigDecimal;
+
 public final class Fixed {
 	private final int _data;
 	
@@ -22,6 +24,8 @@ public final class Fixed {
 	public static final Fixed one = new Fixed(ONE);
 	public static final Fixed two = new Fixed(TWO);
 	public static final Fixed half = new Fixed(HALF);
+	
+	public static final Fixed precision = new Fixed(1);
 	
 	private Fixed(int data) {
 		_data = data;
@@ -283,11 +287,23 @@ public final class Fixed {
         return (float)_data / ONE;
 	}
 	
+	public double doubleValue() {
+        return (double)_data / ONE;
+	}
+	
 	public int intValue() {
-        return _data >> FRACTIONAL_PLACES;
+		return _data >> FRACTIONAL_PLACES;
+	}
+	
+	public BigDecimal bigDecimalValue() {
+		return new BigDecimal(_data).divide(new BigDecimal(ONE));
 	}
 	
 	public int dataValue() {
 		return _data;
+	}
+	
+	public String toString() {
+		return bigDecimalValue().toString();
 	}
 }
