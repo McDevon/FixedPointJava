@@ -10,13 +10,16 @@ public final class Fixed {
 	private static final int MIN_VALUE = Integer.MIN_VALUE;
 	
 	public static final int BITS = 32;
-	private static final int FRACTIONAL_PLACES = 10;
-	private static final int FRACTION_MASK = new Integer(-1) >>> (BITS - FRACTIONAL_PLACES);
+	
+	// NOTE: Decimal bits must be less than or equal to (BITS / 2) for mul() to work
+	// and an even number for sqrt() to work!
+	private static final int DECIMAL_BITS = 10;
+	private static final int DECIMAL_MASK = new Integer(-1) >>> (BITS - DECIMAL_BITS);
 	private static final int FULL_MASK = new Integer(-1);
 	
-	private static final int ONE = 1 << FRACTIONAL_PLACES;
-	private static final int TWO = 1 << (FRACTIONAL_PLACES + 1);
-	private static final int HALF = 1 << (FRACTIONAL_PLACES - 1);
+	private static final int ONE = 1 << DECIMAL_BITS;
+	private static final int TWO = 1 << (DECIMAL_BITS + 1);
+	private static final int HALF = 1 << (DECIMAL_BITS - 1);
 	
 	public static final Fixed maxValue = new Fixed(MAX_VALUE);
 	public static final Fixed minValue = new Fixed(MIN_VALUE);
@@ -66,20 +69,20 @@ public final class Fixed {
         int xl = _data;
         int yl = value._data;
 
-        int xlo = xl & FRACTION_MASK;
-        int xhi = xl >> FRACTIONAL_PLACES;
-        int ylo = yl & FRACTION_MASK;
-        int yhi = yl >> FRACTIONAL_PLACES;
+        int xlo = xl & DECIMAL_MASK;
+        int xhi = xl >> DECIMAL_BITS;
+        int ylo = yl & DECIMAL_MASK;
+        int yhi = yl >> DECIMAL_BITS;
 
         int lolo = xlo * ylo;
         int lohi = xlo * yhi;
         int hilo = xhi * ylo;
         int hihi = xhi * yhi;
 
-        int loResult = lolo >>> FRACTIONAL_PLACES;
+        int loResult = lolo >>> DECIMAL_BITS;
         int midResult1 = lohi;
         int midResult2 = hilo;
-        int hiResult = hihi << FRACTIONAL_PLACES;
+        int hiResult = hihi << DECIMAL_BITS;
 
         int sum = loResult + midResult1 + midResult2 + hiResult;
         return new Fixed(sum);
@@ -106,7 +109,7 @@ public final class Fixed {
         int remainder = xl >= 0 ? xl : (-xl) & (~MIN_VALUE);
         int divider = yl >= 0 ? yl : (-yl) & (~MIN_VALUE);
         int quotient = 0;
-        int bitPos = FRACTIONAL_PLACES + 1;
+        int bitPos = DECIMAL_BITS + 1;
 
         // If the divider is divisible by 2^n, use bit shifts for faster calculation
         while ((divider & 0xF) == 0 && bitPos >= 4) {
@@ -221,8 +224,76 @@ public final class Fixed {
 	}
 	
 	/*
+	 * Math operations
+	 */
+		
+	public static Fixed sqrt(Fixed x) {
+		// BitShift-based sqrt
+		
+        int xl = x._data;
+        if (xl < 0) {
+            // Sqrt not defined for negative numbers and NaN not available
+            throw new ArithmeticException("Sqrt for negative number");
+        }
+
+        int num = xl;
+        int result = 0;
+
+        // second-highest bit
+        int bit = 1 << (BITS - 2);
+
+        while (bit > num) {
+            bit >>>= 2;
+        }
+
+        for (int i = 0; i < 2; i++) {
+            // First we get the top bits of the answer.
+            while (bit != 0) {
+                if (num >= result + bit) {
+                    num -= result + bit;
+                    result = (result >>> 1) + bit;
+                }
+                else {
+                    result = result >>> 1;
+                }
+                bit >>>= 2;
+            }
+
+            if (i == 0) {
+                // Then process it again to get the lowest 16 bits.
+                if (num > (1 << (DECIMAL_BITS)) - 1) {
+                    // The remainder 'num' is too large to be shifted left
+                    // by 32, so we have to add 1 to result manually and
+                    // adjust 'num' accordingly.
+                    // num = a - (result + 0.5)^2
+                    //       = num + result^2 - (result + 0.5)^2
+                    //       = num - result - 0.5
+                    num -= result;
+                    num = (num << (DECIMAL_BITS)) - HALF;
+                    result = (result << (DECIMAL_BITS)) + HALF;
+                }
+                else {
+                    num <<= (DECIMAL_BITS);
+                    result <<= (DECIMAL_BITS);
+                }
+
+                bit = 1 << (DECIMAL_BITS - 2);
+            }
+        }
+        // Finally, if next bit would have been 1, round the result upwards.
+        if (num > result) {
+            ++result;
+        }
+        return new Fixed(result);
+    }
+	
+	/*
 	 * Compatibility
 	 */
+	
+	public static Fixed fromData(int dataValue) {
+		return new Fixed(dataValue);
+	}
 	
 	public static Fixed fromInt(int value) {
 		return new Fixed(value * ONE);
@@ -230,6 +301,14 @@ public final class Fixed {
 	
 	public static Fixed fromLong(long value) {
 		return new Fixed((int)value * ONE);
+	}
+	
+	public static Fixed fromFloat(float value) {
+		return new Fixed((int)(value * ONE));
+	}
+	
+	public static Fixed fromDouble(double value) {
+		return new Fixed((int)(value * ONE));
 	}
 	
 	public static Fixed fromString(String stringValue) {
@@ -292,7 +371,7 @@ public final class Fixed {
 	}
 	
 	public int intValue() {
-		return _data >> FRACTIONAL_PLACES;
+		return _data >> DECIMAL_BITS;
 	}
 	
 	public BigDecimal bigDecimalValue() {
