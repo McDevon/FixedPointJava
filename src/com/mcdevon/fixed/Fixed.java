@@ -311,6 +311,27 @@ public final class Fixed {
 		return new Fixed((int)(value * ONE));
 	}
 	
+	// String part lengths
+	private static final int _leftLength = Integer.toString(maxValue.intValue()).length();
+	private static final int _rightLength;
+	private static final int _maxInt = maxValue.intValue();
+	static {
+		String[] parts = precision.bigDecimalValue().toString().split("\\.");
+		if (parts.length <= 1) {
+			_rightLength = 0;
+		} else {
+			int res = 1;
+			for (int i = 0; i < parts[1].length(); i++) {
+				if (parts[1].charAt(i) == '0') {
+					res++;
+					continue;
+				}
+				break;
+			}
+			_rightLength = res;
+		}
+	}
+	
 	public static Fixed fromString(String stringValue) {
 		String[] parts = null;
 		String[] delimiters = {"\\.",","};
@@ -325,8 +346,16 @@ public final class Fixed {
 
 		int left = Integer.parseInt(parts[0]);
 
+		if (left > _maxInt) {
+			throw new NumberFormatException("Invalid input string: too large number");
+		}
+		
 		if (parts.length == 2) {
 
+			if (parts[1].length() > _rightLength) {
+				parts[1] = parts[1].substring(0, _rightLength);
+			}
+			
 			int right = Integer.parseInt(parts[1]);
 
 			Fixed divider = _tenPowerTable[parts[1].length()]; // 10 ^parts.Length
