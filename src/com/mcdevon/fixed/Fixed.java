@@ -76,11 +76,12 @@ public final class Fixed {
 	public static final Fixed piOverTwo = Fixed.fromString("1.57079632679489661923132169163975144209858469968755");
 	public static final Fixed piInv = Fixed.fromString("0.31830988618379067153776752674502872406891929148091");
 	public static final Fixed piOverTwoInv = Fixed.fromString("0.63661977236758134307553505349005744813783858296183");
-	
+		
 	// Values for sin/tan look-up table generation and use
 	private static final int LUT_LERP_LIMIT = 14;
 	private static final boolean LUT_LERP_IN_USE = DECIMAL_BITS > LUT_LERP_LIMIT;
 	private static final int LUT_SIZE = LUT_LERP_IN_USE ? Fixed.fromInt((1 << LUT_LERP_LIMIT)).mul(piOverTwo).intValue() : piOverTwo._data;
+	private static final Fixed LUT_INTERVAL = Fixed.fromInt(LUT_SIZE - 1).div(piOverTwo);
 	
 	public static int lutSize() {
 		return LUT_SIZE;
@@ -93,6 +94,14 @@ public final class Fixed {
 	public static int sign(Fixed value) {
 		return value._data < 0 ? -1 :
 			value._data > 0 ? 1 : 0;
+	}
+	
+	public static Fixed toRadians(Fixed value) {
+		return value.mul(pi).div(Fixed.fromInt(180));
+	}
+	
+	public static Fixed toDegrees(Fixed value) {
+		return value.mul(Fixed.fromInt(180)).div(pi);
 	}
 	
 	public static Fixed abs(Fixed value) {
