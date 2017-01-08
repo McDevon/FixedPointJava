@@ -77,6 +77,15 @@ public final class Fixed {
 	public static final Fixed piInv = Fixed.fromString("0.31830988618379067153776752674502872406891929148091");
 	public static final Fixed piOverTwoInv = Fixed.fromString("0.63661977236758134307553505349005744813783858296183");
 	
+	// Values for sin/tan look-up table generation and use
+	private static final int LUT_LERP_LIMIT = 14;
+	private static final boolean LUT_LERP_IN_USE = DECIMAL_BITS > LUT_LERP_LIMIT;
+	private static final int LUT_SIZE = LUT_LERP_IN_USE ? Fixed.fromInt((1 << LUT_LERP_LIMIT)).mul(piOverTwo).intValue() : piOverTwo._data;
+	
+	public static int lutSize() {
+		return LUT_SIZE;
+	}
+	
 	private Fixed(int data) {
 		_data = data;
 	}
@@ -343,6 +352,58 @@ public final class Fixed {
         return new Fixed(sum);
 	}
 	
+    public Fixed safeDiv(Fixed value) {
+        int xl = _data;
+        int yl = value._data;
+
+        if (yl == 0) {
+            throw new ArithmeticException("Divide by zero");
+        }
+
+        int remainder = xl >= 0 ? xl : (-xl) & (~MIN_VALUE);
+        int divider = yl >= 0 ? yl : (-yl) & (~MIN_VALUE);
+        int quotient = 0;
+        int bitPos = DECIMAL_BITS + 1;
+
+        // If the divider is divisible by 2^n, use bit shifts for faster calculation
+        while ((divider & 0xF) == 0 && bitPos >= 4) {
+            divider >>>= 4;
+            bitPos -= 4;
+        }
+
+        while (remainder != 0 && bitPos >= 0) {
+            int shift = leadingZeroes(remainder);
+            if (shift > bitPos) {
+                shift = bitPos;
+            }
+            remainder <<= shift;
+            bitPos -= shift;
+
+            // Safer div and mod by casting to long
+            int div = (int) ((remainder & 0xFFFFFFFFL) / (divider & 0xFFFFFFFFL));
+            remainder = (int) ((remainder & 0xFFFFFFFFL) % (divider & 0xFFFFFFFFL));
+            quotient += div << bitPos;
+
+            // Detect overflow
+            if ((div & ~(FULL_MASK >>> bitPos)) != 0) {
+                return ((xl ^ yl) & MIN_VALUE) == 0 ? maxValue : minValue;
+            }
+
+            remainder <<= 1;
+            bitPos--;
+        }
+
+        // rounding
+        quotient++;
+        int result = quotient >>> 1;
+        if (((xl ^ yl) & MIN_VALUE) != 0) {
+            result = -result;
+        }
+
+        return new Fixed(result);
+    }
+
+	
 	public Fixed safeMod(Fixed value) {
 		return new Fixed(_data == MIN_VALUE & value._data == -1 ? 0 :
                 		 _data % value._data);
@@ -474,7 +535,8 @@ public final class Fixed {
 			Fixed sign = fLeft.lessThan(Fixed.zero) ? Fixed.one.negate() : Fixed.one;
 
 			Fixed lr = Fixed.fromInt(right);
-			lr = lr.div(divider).mul(sign);
+			lr = lr.safeDiv(divider);
+			lr = lr.mul(sign);
 			
 			return fLeft.add(lr);
 		}
