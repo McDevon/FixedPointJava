@@ -486,6 +486,62 @@ public final class Fixed {
     }
 	
 	/*
+	 * Look-up table generation
+	 */
+	
+	static void generateLutFile() {
+		
+		try (java.io.PrintWriter writer = new java.io.PrintWriter("FixedPoint32Lut.java", "UTF-8")) {
+			// Header
+		    writer.println("package com.mcdevon.fixed;\n");
+		    writer.println("public class FixedPoint32Lut {");
+		    
+		    // Sin lut
+		    writer.println("    public static int[] sin = {");
+		    writer.print("       ");
+		    
+		    int k = 1;
+            for (int i = 0; i < LUT_SIZE; ++i) {
+                double angle = i * Math.PI * 0.5 / (LUT_SIZE - 1);
+                if (k % 8 == 0) {
+                	writer.print("\n       ");;
+                }
+                k++;
+                double sin = Math.sin(angle);
+                writer.print(String.format(" %d,", Fixed.fromDouble(sin)._data));
+            }
+            
+            // Tan lut
+            writer.println("\n    };\n");
+            writer.println("    public static int[] tan = {");
+		    writer.print("       ");
+		    
+		    k = 1;
+            for (int i = 0; i < LUT_SIZE; ++i) {
+                double angle = i * Math.PI * 0.5 / (LUT_SIZE - 1);
+                if (k % 8 == 0) {
+                	writer.print("\n       ");;
+                }
+                k++;
+                double tan = Math.tan(angle);
+                Fixed result;
+                if (tan > maxValue.doubleValue() || tan < 0.0) {
+                	result = maxValue;
+                } else {
+                	result = Fixed.fromDouble(tan);
+                }
+                writer.print(String.format(" %d,", result._data));
+            }
+
+            // Footer
+		    writer.println("\n    };\n}");
+		    writer.close();
+		} catch (java.io.IOException e) {
+		   System.err.println(e.getLocalizedMessage());
+		}
+	}
+	
+	/*
 	 * Compatibility
 	 */
 	
@@ -596,4 +652,8 @@ public final class Fixed {
 		
 		return builder.toString();
 	}
+	
+	/*public static void main (String args[]) {
+		generateLutFile();
+	}*/
 }
