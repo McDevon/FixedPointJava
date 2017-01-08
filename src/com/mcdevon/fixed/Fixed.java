@@ -343,6 +343,11 @@ public final class Fixed {
         return new Fixed(sum);
 	}
 	
+	public Fixed safeMod(Fixed value) {
+		return new Fixed(_data == MIN_VALUE & value._data == -1 ? 0 :
+                		 _data % value._data);
+	}
+	
 	/*
 	 * Math operations
 	 */
