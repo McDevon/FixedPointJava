@@ -270,6 +270,79 @@ public final class Fixed {
         return new Fixed(sub);
 	}
 	
+	public Fixed safeMul(Fixed value) {
+        int xl = _data;
+        int yl = value._data;
+
+        int xlo = xl & DECIMAL_MASK;
+        int xhi = xl >> DECIMAL_BITS;
+        int ylo = yl & DECIMAL_MASK;
+        int yhi = yl >> DECIMAL_BITS;
+
+        int lolo = xlo * ylo;
+        int lohi = xlo * yhi;
+        int hilo = xhi * ylo;
+        int hihi = xhi * yhi;
+
+        int loResult = lolo >>> DECIMAL_BITS;
+        int midResult1 = lohi;
+        int midResult2 = hilo;
+        int hiResult = hihi << DECIMAL_BITS;
+
+        boolean overflow = false;
+        
+        int sum = loResult + midResult1;
+        
+        // a + b overflows if sign(x) ^ sign(y) != sign(sum),
+        // test after every add
+        overflow |= ((loResult ^ midResult1 ^ sum) & MIN_VALUE) != 0;
+        
+        int sumTest = sum + midResult2;
+        overflow |= ((sum ^ midResult2 ^ sumTest) & MIN_VALUE) != 0;
+        
+        sum = sumTest + hiResult;
+        overflow |= ((sumTest ^ hiResult ^ sum) & MIN_VALUE) != 0;
+
+        boolean opSignsEqual = ((xl ^ yl) & MIN_VALUE) == 0;
+
+        // check for same sign operands and negative result and for
+        // different sign operands and positive result
+        if (opSignsEqual) {
+            if (sum < 0 || (overflow && xl > 0)) {
+                return maxValue;
+            }
+        }
+        else if (sum > 0) {
+            return minValue;
+        }
+
+        // if the top bits of hihi are neither all 0s or 1s,
+        // then this means the result overflowed.
+        int topBits = hihi >> DECIMAL_BITS;
+        if (topBits != 0 && topBits != -1) {
+            return opSignsEqual ? maxValue : minValue; 
+        }
+
+        // Last case of negative overflow
+        if (!opSignsEqual) {
+            int posOp;
+            int negOp;
+            if (xl > yl) {
+                posOp = xl;
+                negOp = yl;
+            }
+            else {
+                posOp = yl;
+                negOp = xl;
+            }
+            if (sum > negOp && negOp < -ONE && posOp > ONE) {
+                return minValue;
+            }
+        }
+
+        return new Fixed(sum);
+	}
+	
 	/*
 	 * Math operations
 	 */
