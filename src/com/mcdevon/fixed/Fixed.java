@@ -83,6 +83,9 @@ public final class Fixed {
 	private static final int LUT_SIZE = LUT_LERP_IN_USE ? Fixed.fromInt((1 << LUT_LERP_LIMIT)).mul(piOverTwo).intValue() : piOverTwo._data;
 	private static final Fixed LUT_INTERVAL = Fixed.fromInt(LUT_SIZE - 1).div(piOverTwo);
 	
+	private static final Fixed degToRad = pi.div(Fixed.fromInt(180));
+	private static final Fixed radToDeg = Fixed.fromInt(180).div(pi);
+	
 	public static int lutSize() {
 		return LUT_SIZE;
 	}
@@ -97,11 +100,11 @@ public final class Fixed {
 	}
 	
 	public static Fixed toRadians(Fixed value) {
-		return value.mul(pi).div(Fixed.fromInt(180));
+		return value.mul(degToRad);
 	}
 	
 	public static Fixed toDegrees(Fixed value) {
-		return value.mul(Fixed.fromInt(180)).div(pi);
+		return value.mul(radToDeg);
 	}
 	
 	public static Fixed abs(Fixed value) {
@@ -575,5 +578,22 @@ public final class Fixed {
 	
 	public String toString() {
 		return bigDecimalValue().toString();
+	}
+	
+	public static String info() {
+		StringBuilder builder = new StringBuilder();
+		builder.append("Precision: ");
+		builder.append(precision);
+		builder.append("\n");
+		
+		builder.append("Max value: ");
+		builder.append(maxValue);
+		builder.append("\n");
+		
+		builder.append("Min Value: ");
+		builder.append(minValue);
+		builder.append("\n");
+		
+		return builder.toString();
 	}
 }
