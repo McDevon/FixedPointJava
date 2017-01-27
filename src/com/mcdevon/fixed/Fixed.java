@@ -557,17 +557,15 @@ public final class Fixed {
 
         	// Find the two closest values in the lut
         	Fixed rawIndex = clamped.safeMul(LUT_INTERVAL_INV);
-        	System.out.println("Raw index " + rawIndex);
         	Fixed roundedIndex = roundRuleEven(rawIndex); 
         	Fixed indexError = rawIndex.sub(roundedIndex);
 
         	// Get the nearest values
-        	// TODO: Fix luts to 
+        	// TODO: Fix luts to give out more accurate result
         	int index1 = flipH ? Math.abs(FixedPoint32Lut.sin.length - 1 - roundedIndex.intValue()): 
         				roundedIndex.intValue();
         	int index2 = flipH ? Math.abs(FixedPoint32Lut.sin.length - 1 - roundedIndex.intValue() - sign(indexError)) : 
         		roundedIndex.intValue() + sign(indexError);
-        	System.out.println("i1: " + index1 + " i2: " + index2 + " " + flipH);
         	
         	Fixed nearestValue = new Fixed(FixedPoint32Lut.sin[index1]);
         	Fixed secondNearestValue = new Fixed(FixedPoint32Lut.sin[index2]);
@@ -597,6 +595,96 @@ public final class Fixed {
         return sin(new Fixed(sinAngle));
     }
 	
+	public static Fixed tan(Fixed value) {
+        int clampPi = value._data % PI;
+        boolean flip = false;
+        if (clampPi < 0) {
+            clampPi = -clampPi;
+            flip = true;
+        }
+        
+        // Clamp to pi/2
+        if (clampPi > PI_OVER_TWO) {
+            flip = !flip;
+            clampPi = PI_OVER_TWO - (clampPi - PI_OVER_TWO);
+        }
+
+        if (LUT_LERP_IN_USE) {
+        	// Use linear interpolation to get a bit more accurate value for sin
+        	Fixed clamped = new Fixed(clampPi);
+
+        	// Find the two closest values in the lut
+        	Fixed rawIndex = clamped.safeMul(LUT_INTERVAL_INV);
+        	Fixed roundedIndex = roundRuleEven(rawIndex); 
+        	Fixed indexError = rawIndex.sub(roundedIndex);
+
+        	// Get the nearest values        	
+        	Fixed nearestValue = new Fixed(FixedPoint32Lut.tan[roundedIndex.intValue()]);
+        	Fixed secondNearestValue = new Fixed(FixedPoint32Lut.tan[roundedIndex.intValue() + sign(indexError)]);
+
+        	// Lerp to get final value
+        	int delta = indexError.mul(abs(nearestValue.sub(secondNearestValue)))._data;
+        	int interpolatedValue = nearestValue._data + delta;
+        	int finalValue = flip ? -interpolatedValue : interpolatedValue;
+        	
+        	return new Fixed(finalValue);
+        } else {
+            
+        	// Expect to find most accurate value directly from lut
+        	if (clampPi >= LUT_SIZE) {
+        		clampPi = LUT_SIZE - 1;
+        	}
+        	
+        	int result = FixedPoint32Lut.tan[clampPi];
+        	return new Fixed(flip ? -result : result);
+        }
+    }
+	
+	private static Fixed atan2Help = Fixed.fromString("0.28");
+
+    public static Fixed atan2(Fixed y, Fixed x) {
+		// Approximate atan2 with error < 0.005 (if enough decimal bits)
+        int yl = y._data;
+        int xl = x._data;
+        
+        // div by zero cases
+        if (xl == 0) {
+            if (yl > 0) {
+                return piOverTwo;
+            }
+            if (yl == 0) {
+                return zero;
+            }
+            return piOverTwo.negate();
+        }
+        Fixed atan;
+        Fixed z = y.div(x);
+
+        Fixed divider = one.add(atan2Help.safeMul(z).safeMul(z));
+        
+        // overflow check
+        if (divider.equals(maxValue)) {
+            return y.lessThan(zero) ? piOverTwo.negate() : piOverTwo;
+        }
+
+        if (abs(z).lessThan(one)) {
+            atan = z.div(divider);
+            if (xl < 0) {
+                if (yl < 0) {
+                    return atan.sub(pi);
+                }
+                return atan.add(pi);
+            }
+        }
+        else {
+            atan = piOverTwo.sub(z.div(z.safeMul(z).add(atan2Help)));
+            if (yl < 0) {
+                return atan.sub(pi);
+            }
+        }
+        return atan;
+    }
+	
 	/*
 	 * Look-up table generation
 	 */
@@ -621,7 +709,6 @@ public final class Fixed {
                 k++;
                 double sin = Math.sin(angle);
                 Fixed val = Fixed.fromDouble(sin);
-                System.out.println("sin( " + angle + " ) = " + sin + " -> " + val + " : " + val._data);
                 writer.print(String.format(" %d,", val._data));
             }
             
@@ -670,7 +757,6 @@ public final class Fixed {
 			double sin = Math.sin(angle);
 			Fixed result = Fixed.fromDouble(sin);
 			FixedPoint32Lut.sin[i] = result._data;
-			System.out.println("sin( " + angle + " ) = " + sin + " -> sin( " + startValue + " ) = " + result + " : " + result._data);
 		}
 
 		boolean overflow = false;
