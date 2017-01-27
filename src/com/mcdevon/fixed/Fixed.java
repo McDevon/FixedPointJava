@@ -81,10 +81,15 @@ public final class Fixed {
 	private static final int LUT_LERP_LIMIT = 14;
 	private static final boolean LUT_LERP_IN_USE = DECIMAL_BITS > LUT_LERP_LIMIT;
 	private static final int LUT_SIZE = LUT_LERP_IN_USE ? Fixed.fromInt((1 << LUT_LERP_LIMIT)).mul(piOverTwo).intValue() : piOverTwo._data;
-	private static final Fixed LUT_INTERVAL = Fixed.fromInt(LUT_SIZE - 1).div(piOverTwo);
+	private static final Fixed LUT_INTERVAL = piOverTwo.safeDiv(Fixed.fromInt(LUT_SIZE - 1));
+	private static final Fixed LUT_INTERVAL_INV = Fixed.fromInt(LUT_SIZE - 1).safeDiv(piOverTwo);
 	
 	private static final Fixed degToRad = pi.div(Fixed.fromInt(180));
-	private static final Fixed radToDeg = Fixed.fromInt(180).div(pi);
+	private static final Fixed radToDeg = Fixed.fromInt(180).safeDiv(pi);
+	
+	private static final int PI = pi._data;
+	private static final int PI_TIMES_TWO = piTimesTwo._data;
+	private static final int PI_OVER_TWO = piOverTwo._data;
 	
 	public static int lutSize() {
 		return LUT_SIZE;
@@ -119,6 +124,42 @@ public final class Fixed {
 		
 		int mask = value._data >> (BITS - 1);
 		return new Fixed((value._data + mask) ^ mask);
+	}
+	
+	 public static Fixed floor(Fixed value) {
+         // Just zero out the decimal part
+         return new Fixed(value._data & (~DECIMAL_MASK));
+     }
+	 
+     public static Fixed Ceiling(Fixed value) {
+         boolean hasFrac = (value._data & DECIMAL_MASK) != 0;
+         return hasFrac ? floor(value).add(one) : value;
+     }
+	
+	public static Fixed round(Fixed value) {
+		int fract = value._data & DECIMAL_MASK;
+        Fixed integral = floor(value);
+        if (fract < HALF) {
+            return integral;
+        }
+        // Halves are always rounded upwards
+        return integral.add(one);
+	}
+	
+	public static Fixed roundRuleEven(Fixed value) {
+		int fract = value._data & DECIMAL_MASK;
+        Fixed integral = floor(value);
+        if (fract < HALF) {
+            return integral;
+        }
+        if (fract > HALF) {
+        	return integral.add(one);
+        }
+
+        // Halves are rounded to nearest even number
+        return (integral._data & ONE) == 0
+                ? integral
+                : integral.add(one);
 	}
 	
 	/*
@@ -485,13 +526,84 @@ public final class Fixed {
         return new Fixed(result);
     }
 	
+	public static Fixed sin(Fixed value) {
+		int angle = value._data;
+		
+		// Clamp to 0...2pi
+		int clamp2pi = angle % PI_TIMES_TWO;
+		if (angle < 0) {
+			clamp2pi += PI_TIMES_TWO;
+        }
+		
+		// Clamp further to take use of luts
+		boolean flipV = clamp2pi >= PI;
+		int clampPi = clamp2pi;
+		
+		while (clampPi >= PI) {
+            clampPi -= PI;
+        }
+		
+		// Last clamp
+        boolean flipH = clampPi >= PI_OVER_TWO;
+        
+        int clampPiPer2 = clampPi;
+        if (clampPiPer2 >= PI_OVER_TWO) {
+            clampPiPer2 -= PI_OVER_TWO;
+		}
+                
+        if (LUT_LERP_IN_USE) {
+        	// Use linear interpolation to get a bit more accurate value for sin
+        	Fixed clamped = new Fixed(clampPiPer2);
+
+        	// Find the two closest values in the lut
+        	Fixed rawIndex = clamped.safeMul(LUT_INTERVAL_INV);
+        	System.out.println("Raw index " + rawIndex);
+        	Fixed roundedIndex = roundRuleEven(rawIndex); 
+        	Fixed indexError = rawIndex.sub(roundedIndex);
+
+        	// Get the nearest values
+        	// TODO: Fix luts to 
+        	int index1 = flipH ? Math.abs(FixedPoint32Lut.sin.length - 1 - roundedIndex.intValue()): 
+        				roundedIndex.intValue();
+        	int index2 = flipH ? Math.abs(FixedPoint32Lut.sin.length - 1 - roundedIndex.intValue() - sign(indexError)) : 
+        		roundedIndex.intValue() + sign(indexError);
+        	System.out.println("i1: " + index1 + " i2: " + index2 + " " + flipH);
+        	
+        	Fixed nearestValue = new Fixed(FixedPoint32Lut.sin[index1]);
+        	Fixed secondNearestValue = new Fixed(FixedPoint32Lut.sin[index2]);
+
+        	// Lerp to get final value
+        	int delta = indexError.mul(abs(nearestValue.sub(secondNearestValue)))._data;
+        	int interpolatedValue = nearestValue._data + (flipH ? -delta : delta);
+        	int finalValue = flipV ? -interpolatedValue : interpolatedValue;
+        	
+        	return new Fixed(finalValue);
+        } else {
+            
+        	// Expect to find most accurate value directly from lut
+        	if (clampPiPer2 >= LUT_SIZE) {
+        		clampPiPer2 = LUT_SIZE - 1;
+        	}
+        	
+        	int result = FixedPoint32Lut.sin[flipH ? LUT_SIZE - 1 - clampPiPer2 :
+        		clampPiPer2];
+        	return new Fixed(flipV ? -result : result);
+        }
+	}
+	
+	public static Fixed cos(Fixed value) {
+        int vd = value._data;
+        int sinAngle = vd + (vd > 0 ? -PI - PI_OVER_TWO : PI_OVER_TWO);
+        return sin(new Fixed(sinAngle));
+    }
+	
 	/*
 	 * Look-up table generation
 	 */
 	
 	static void generateLutFile() {
 		
-		try (java.io.PrintWriter writer = new java.io.PrintWriter("FixedPoint32Lut.java", "UTF-8")) {
+		try (java.io.PrintWriter writer = new java.io.PrintWriter("src/com/mcdevon/fixed/FixedPoint32Lut.java", "UTF-8")) {
 			// Header
 		    writer.println("package com.mcdevon.fixed;\n");
 		    writer.println("public class FixedPoint32Lut {");
@@ -502,13 +614,15 @@ public final class Fixed {
 		    
 		    int k = 1;
             for (int i = 0; i < LUT_SIZE; ++i) {
-                double angle = i * Math.PI * 0.5 / (LUT_SIZE - 1);
+                double angle = new Fixed(i * LUT_INTERVAL._data).doubleValue(); // Math.PI * 0.5 / (LUT_SIZE - 1);
                 if (k % 8 == 0) {
-                	writer.print("\n       ");;
+                	writer.print("\n       ");
                 }
                 k++;
                 double sin = Math.sin(angle);
-                writer.print(String.format(" %d,", Fixed.fromDouble(sin)._data));
+                Fixed val = Fixed.fromDouble(sin);
+                System.out.println("sin( " + angle + " ) = " + sin + " -> " + val + " : " + val._data);
+                writer.print(String.format(" %d,", val._data));
             }
             
             // Tan lut
@@ -517,16 +631,21 @@ public final class Fixed {
 		    writer.print("       ");
 		    
 		    k = 1;
+		    boolean overflow = false;
             for (int i = 0; i < LUT_SIZE; ++i) {
-                double angle = i * Math.PI * 0.5 / (LUT_SIZE - 1);
+    			double angle = new Fixed(i * LUT_INTERVAL._data).doubleValue();
                 if (k % 8 == 0) {
-                	writer.print("\n       ");;
+                	writer.print("\n       ");
                 }
                 k++;
                 double tan = Math.tan(angle);
                 Fixed result;
-                if (tan > maxValue.doubleValue() || tan < 0.0) {
+                // After first overflow, all remaining values are maxValue
+                if (overflow || tan > maxValue.doubleValue() || tan < 0.0) {
                 	result = maxValue;
+                	if (!overflow) {
+                		overflow = true;
+                	}
                 } else {
                 	result = Fixed.fromDouble(tan);
                 }
@@ -538,6 +657,37 @@ public final class Fixed {
 		    writer.close();
 		} catch (java.io.IOException e) {
 		   System.err.println(e.getLocalizedMessage());
+		}
+	}	
+	static void generateDynamicLutData() {
+		
+		FixedPoint32Lut.sin = new int[LUT_SIZE];
+		FixedPoint32Lut.tan = new int[LUT_SIZE];
+		
+		for (int i = 0; i < LUT_SIZE; ++i) {
+			Fixed startValue = new Fixed(i * LUT_INTERVAL._data);
+			double angle = startValue.doubleValue();
+			double sin = Math.sin(angle);
+			Fixed result = Fixed.fromDouble(sin);
+			FixedPoint32Lut.sin[i] = result._data;
+			System.out.println("sin( " + angle + " ) = " + sin + " -> sin( " + startValue + " ) = " + result + " : " + result._data);
+		}
+
+		boolean overflow = false;
+		for (int i = 0; i < LUT_SIZE; ++i) {
+			double angle = new Fixed(i * LUT_INTERVAL._data).doubleValue();
+			double tan = Math.tan(angle);
+			Fixed result;
+			// After first overflow, all remaining values are maxValue
+			if (overflow || tan > maxValue.doubleValue() || tan < 0.0) {
+				result = maxValue;
+				if (!overflow) {
+					overflow = true;
+				}
+			} else {
+				result = Fixed.fromDouble(tan);
+			}
+			FixedPoint32Lut.tan[i] = result._data;
 		}
 	}
 	
@@ -654,6 +804,8 @@ public final class Fixed {
 	}
 	
 	/*public static void main (String args[]) {
+	 	// Do not use for DECIMAL_BITS > 10, lut file generation must be fixed for larger luts
+	 	// Use dynamic lut generation instead
 		generateLutFile();
 	}*/
 }
