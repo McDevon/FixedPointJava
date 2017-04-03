@@ -175,26 +175,7 @@ public final class Fixed {
 	}
 	
 	public Fixed mul(Fixed value) {
-        int xl = _data;
-        int yl = value._data;
-
-        int xlo = xl & DECIMAL_MASK;
-        int xhi = xl >> DECIMAL_BITS;
-        int ylo = yl & DECIMAL_MASK;
-        int yhi = yl >> DECIMAL_BITS;
-
-        int lolo = xlo * ylo;
-        int lohi = xlo * yhi;
-        int hilo = xhi * ylo;
-        int hihi = xhi * yhi;
-
-        int loResult = lolo >>> DECIMAL_BITS;
-        int midResult1 = lohi;
-        int midResult2 = hilo;
-        int hiResult = hihi << DECIMAL_BITS;
-
-        int sum = loResult + midResult1 + midResult2 + hiResult;
-        return new Fixed(sum);
+        return new Fixed((int)(((long)_data * value._data) >> DECIMAL_BITS));
     }
 	
 	private static final int oneBitHighMask = MIN_VALUE;
@@ -208,53 +189,7 @@ public final class Fixed {
     }
 
     public Fixed div(Fixed value) {
-        int xl = _data;
-        int yl = value._data;
-
-        if (yl == 0) {
-            throw new ArithmeticException("Divide by zero");
-        }
-
-        int remainder = xl >= 0 ? xl : (-xl) & (~MIN_VALUE);
-        int divider = yl >= 0 ? yl : (-yl) & (~MIN_VALUE);
-        int quotient = 0;
-        int bitPos = DECIMAL_BITS + 1;
-
-        // If the divider is divisible by 2^n, use bit shifts for faster calculation
-        while ((divider & 0xF) == 0 && bitPos >= 4) {
-            divider >>>= 4;
-            bitPos -= 4;
-        }
-
-        while (remainder != 0 && bitPos >= 0) {
-            int shift = leadingZeroes(remainder);
-            if (shift > bitPos) {
-                shift = bitPos;
-            }
-            remainder <<= shift;
-            bitPos -= shift;
-
-            int div = remainder / divider;
-            remainder = remainder % divider;
-            quotient += div << bitPos;
-
-            // Detect overflow
-            if ((div & ~(FULL_MASK >>> bitPos)) != 0) {
-                return ((xl ^ yl) & MIN_VALUE) == 0 ? maxValue : minValue;
-            }
-
-            remainder <<= 1;
-            bitPos--;
-        }
-
-        // rounding
-        quotient++;
-        int result = quotient >>> 1;
-        if (((xl ^ yl) & MIN_VALUE) != 0) {
-            result = -result;
-        }
-
-        return new Fixed(result);
+        return new Fixed((int)(((long)_data << DECIMAL_BITS) / value._data));
     }
     
 	public Fixed mod(Fixed value) {
